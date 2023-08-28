@@ -18,11 +18,7 @@ from os.path import isfile, isdir, join, split, exists, splitext
 from typing import List, Optional, Tuple, Dict
 from typing import Optional, List, Dict, Callable
 from dataclasses import dataclass, field
-from datasets.dataset_dict import DatasetDict
 from datasets.arrow_dataset import Dataset
-from transformers.training_args import TrainingArguments
-from datasets.arrow_dataset import Dataset
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 
 def convert_fk_index(data):
@@ -144,7 +140,7 @@ def generate_data(data_filepaths, db_path):
                 schema = schema_cache[db_id]
                 raw_data.append(
                     {
-                        "query": sample["query"],
+                        "query": sample["SQL"],
                         "question": sample["question"],
                         "db_id": db_id,
                         "db_path": db_path,
@@ -159,7 +155,8 @@ def generate_data(data_filepaths, db_path):
                             for column_id in schema["primary_keys"]
                         ],
                         "db_foreign_keys": [
-                            {"column_id": column_id, "other_column_id": other_column_id}
+                            {"column_id": column_id,
+                                "other_column_id": other_column_id}
                             for column_id, other_column_id in schema["foreign_keys"]
                         ],
                     }
@@ -318,9 +315,9 @@ def get_matched_entries(
                 n_grams, match.a, match.a + match.size
             )
             if source_match and source_match.size > 1:
-                match_str = field_value[match.b : match.b + match.size]
+                match_str = field_value[match.b: match.b + match.size]
                 source_match_str = s[
-                    source_match.start : source_match.start + source_match.size
+                    source_match.start: source_match.start + source_match.size
                 ]
                 c_match_str = match_str.lower().strip()
                 c_source_match_str = source_match_str.lower().strip()
@@ -341,7 +338,8 @@ def get_matched_entries(
                     else:
                         if prefix_match(c_field_value, c_source_match_str):
                             match_score = (
-                                fuzz.ratio(c_field_value, c_source_match_str) / 100
+                                fuzz.ratio(c_field_value,
+                                           c_source_match_str) / 100
                             )
                         else:
                             match_score = 0
@@ -375,7 +373,8 @@ def get_matched_entries(
 
 @functools.lru_cache(maxsize=1000, typed=False)
 def get_column_picklist(table_name: str, column_name: str, db_path: str) -> list:
-    fetch_sql = "SELECT DISTINCT `{}` FROM `{}`".format(column_name, table_name)
+    fetch_sql = "SELECT DISTINCT `{}` FROM `{}`".format(
+        column_name, table_name)
     try:
         conn = sqlite3.connect(db_path)
         conn.text_factory = bytes
@@ -437,190 +436,6 @@ def get_database_matches(
 
 
 @dataclass
-class DataTrainingArguments:
-    """
-    Arguments pertaining to what data we are going to input our model for training and eval.
-    """
-
-    overwrite_cache: bool = field(
-        default=False,
-        metadata={"help": "Overwrite the cached training and evaluation sets"},
-    )
-    preprocessing_num_workers: Optional[int] = field(
-        default=None,
-        metadata={"help": "The number of processes to use for the preprocessing."},
-    )
-    max_source_length: Optional[int] = field(
-        default=512,
-        metadata={
-            "help": "The maximum total input sequence length after tokenization. Sequences longer "
-            "than this will be truncated, sequences shorter will be padded."
-        },
-    )
-    max_target_length: Optional[int] = field(
-        default=512,
-        metadata={
-            "help": "The maximum total sequence length for target text after tokenization. Sequences longer "
-            "than this will be truncated, sequences shorter will be padded."
-        },
-    )
-    val_max_target_length: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "The maximum total sequence length for validation target text after tokenization. Sequences longer "
-            "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`."
-            "This argument is also used to override the ``max_length`` param of ``model.generate``, which is used "
-            "during ``evaluate`` and ``predict``."
-        },
-    )
-    val_max_time: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "The maximum allowed time in seconds for generation of one example. This setting can be used to stop "
-            "generation whenever the full generation exceeds the specified amount of time."
-        },
-    )
-    max_train_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "For debugging purposes or quicker training, truncate the number of training examples to this "
-            "value if set."
-        },
-    )
-    max_val_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "For debugging purposes or quicker training, truncate the number of validation or test examples to this "
-            "value if set."
-        },
-    )
-    num_beams: int = field(
-        default=1,
-        metadata={
-            "help": "Number of beams to use for evaluation. This argument will be passed to ``model.generate``, "
-            "which is used during ``evaluate`` and ``predict``."
-        },
-    )
-    num_beam_groups: int = field(
-        default=1,
-        metadata={
-            "help": "Number of beam groups to use for evaluation. This argument will be passed to ``model.generate``, "
-            "which is used during ``evaluate`` and ``predict``."
-        },
-    )
-    diversity_penalty: Optional[float] = field(
-        default=None,
-        metadata={
-            "help": "Diversity penalty to use for evaluation. This argument will be passed to ``model.generate``, "
-            "which is used during ``evaluate`` and ``predict``."
-        },
-    )
-    num_return_sequences: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "The number of sequences to generate during evaluation. This argument will be passed to "
-            "``model.generate``, which is used during ``evaluate`` and ``predict``."
-        },
-    )
-    ignore_pad_token_for_loss: bool = field(
-        default=True,
-        metadata={
-            "help": "Whether or not to ignore the tokens corresponding to padded labels in the loss computation or not."
-        },
-    )
-    source_prefix: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "A prefix to add before every source text (useful for T5 models)."
-        },
-    )
-    schema_serialization_type: str = field(
-        default="peteshaw",
-        metadata={
-            "help": "Choose between ``verbose`` and ``peteshaw`` schema serialization."
-        },
-    )
-    schema_serialization_randomized: bool = field(
-        default=False,
-        metadata={"help": "Whether or not to randomize the order of tables."},
-    )
-    schema_serialization_with_db_id: bool = field(
-        default=True,
-        metadata={
-            "help": "Whether or not to add the database id to the context. Needed for Picard."
-        },
-    )
-    schema_serialization_with_db_content: bool = field(
-        default=True,
-        metadata={
-            "help": "Whether or not to use the database content to resolve field matches."
-        },
-    )
-    normalize_query: bool = field(
-        default=True, metadata={"help": "Whether to normalize the SQL queries."}
-    )
-    target_with_db_id: bool = field(
-        default=True,
-        metadata={
-            "help": "Whether or not to add the database id to the target. Needed for Picard."
-        },
-    )
-
-    def __post_init__(self):
-        if self.val_max_target_length is None:
-            self.val_max_target_length = self.max_target_length
-
-
-@dataclass
-class DataArguments:
-    dataset: str = field(
-        metadata={
-            "help": "The dataset to be used. Choose between ``spider``, ``cosql``, or ``cosql+spider``, or ``spider_realistic``, or ``spider_syn``, or ``spider_dk``."
-        },
-    )
-    dataset_paths: Dict[str, str] = field(
-        default_factory=lambda: {
-            "spider": "./seq2seq/datasets/spider",
-            "cosql": "./seq2seq/datasets/cosql",
-            "spider_realistic": "./seq2seq/datasets/spider_realistic",
-            "spider_syn": "./seq2seq/datasets/spider_syn",
-            "spider_dk": "./seq2seq/datasets/spider_dk",
-        },
-        metadata={"help": "Paths of the dataset modules."},
-    )
-    metric_config: str = field(
-        default="both",
-        metadata={
-            "help": "Choose between ``exact_match``, ``test_suite``, or ``both``."
-        },
-    )
-    # we are referencing spider_realistic to spider metrics only as both use the main spider dataset as base.
-    metric_paths: Dict[str, str] = field(
-        default_factory=lambda: {
-            "spider": "./seq2seq/metrics/spider",
-            "spider_realistic": "./seq2seq/metrics/spider",
-            "cosql": "./seq2seq/metrics/cosql",
-            "spider_syn": "./seq2seq/metrics/spider",
-            "spider_dk": "./seq2seq/metrics/spider",
-        },
-        metadata={"help": "Paths of the metric modules."},
-    )
-    test_suite_db_dir: Optional[str] = field(
-        default=None, metadata={"help": "Path to the test-suite databases."}
-    )
-    data_config_file: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "Path to data configuration file (specifying the database splits)"
-        },
-    )
-    test_sections: Optional[List[str]] = field(
-        default=None,
-        metadata={"help": "Sections from the data config to use for testing"},
-    )
-
-
-@dataclass
 class TrainSplit(object):
     dataset: Dataset
     schemas: Dict[str, dict]
@@ -653,125 +468,6 @@ def _get_schemas(examples: Dataset) -> Dict[str, dict]:
                 "db_foreign_keys": ex["db_foreign_keys"],
             }
     return schemas
-
-
-def _prepare_train_split(
-    dataset: Dataset,
-    data_training_args: DataTrainingArguments,
-    add_serialized_schema: Callable[[dict], dict],
-    pre_process_function: Callable[[dict, Optional[int], Optional[int]], dict],
-) -> TrainSplit:
-    schemas = _get_schemas(examples=dataset)
-    dataset = dataset.map(
-        add_serialized_schema,
-        batched=False,
-        num_proc=data_training_args.preprocessing_num_workers,
-        load_from_cache_file=not data_training_args.overwrite_cache,
-    )
-    if data_training_args.max_train_samples is not None:
-        dataset = dataset.select(range(data_training_args.max_train_samples))
-    column_names = dataset.column_names
-    dataset = dataset.map(
-        lambda batch: pre_process_function(
-            batch=batch,
-            max_source_length=data_training_args.max_source_length,
-            max_target_length=data_training_args.max_target_length,
-        ),
-        batched=True,
-        num_proc=data_training_args.preprocessing_num_workers,
-        remove_columns=column_names,
-        load_from_cache_file=not data_training_args.overwrite_cache,
-    )
-    return TrainSplit(dataset=dataset, schemas=schemas)
-
-
-def _prepare_eval_split(
-    dataset: Dataset,
-    data_training_args: DataTrainingArguments,
-    add_serialized_schema: Callable[[dict], dict],
-    pre_process_function: Callable[[dict, Optional[int], Optional[int]], dict],
-) -> EvalSplit:
-    if (
-        data_training_args.max_val_samples is not None
-        and data_training_args.max_val_samples < len(dataset)
-    ):
-        eval_examples = dataset.select(range(data_training_args.max_val_samples))
-    else:
-        eval_examples = dataset
-    schemas = _get_schemas(examples=eval_examples)
-    eval_dataset = eval_examples.map(
-        add_serialized_schema,
-        batched=False,
-        num_proc=data_training_args.preprocessing_num_workers,
-        load_from_cache_file=not data_training_args.overwrite_cache,
-    )
-    column_names = eval_dataset.column_names
-    eval_dataset = eval_dataset.map(
-        lambda batch: pre_process_function(
-            batch=batch,
-            max_source_length=data_training_args.max_source_length,
-            max_target_length=data_training_args.val_max_target_length,
-        ),
-        batched=True,
-        num_proc=data_training_args.preprocessing_num_workers,
-        remove_columns=column_names,
-        load_from_cache_file=not data_training_args.overwrite_cache,
-    )
-    return EvalSplit(dataset=eval_dataset, examples=eval_examples, schemas=schemas)
-
-
-def prepare_splits(
-    dataset_dict: DatasetDict,
-    data_args: DataArguments,
-    training_args: TrainingArguments,
-    data_training_args: DataTrainingArguments,
-    add_serialized_schema: Callable[[dict], dict],
-    pre_process_function: Callable[[dict, Optional[int], Optional[int]], dict],
-) -> DatasetSplits:
-    train_split, eval_split, test_splits = None, None, None
-
-    if training_args.do_train:
-        train_split = _prepare_train_split(
-            dataset_dict["train"],
-            data_training_args=data_training_args,
-            add_serialized_schema=add_serialized_schema,
-            pre_process_function=pre_process_function,
-        )
-
-    if training_args.do_eval:
-        eval_split = _prepare_eval_split(
-            dataset_dict["validation"],
-            data_training_args=data_training_args,
-            add_serialized_schema=add_serialized_schema,
-            pre_process_function=pre_process_function,
-        )
-
-    if training_args.do_predict:
-        test_splits = {
-            section: _prepare_eval_split(
-                dataset_dict[section],
-                data_training_args=data_training_args,
-                add_serialized_schema=add_serialized_schema,
-                pre_process_function=pre_process_function,
-            )
-            for section in data_args.test_sections
-        }
-        test_split_schemas = {}
-        for split in test_splits.values():
-            test_split_schemas.update(split.schemas)
-
-    schemas = {
-        **(train_split.schemas if train_split is not None else {}),
-        **(eval_split.schemas if eval_split is not None else {}),
-        **(test_split_schemas if test_splits is not None else {}),
-    }
-
-    return DatasetSplits(
-        train_split=train_split,
-        eval_split=eval_split,
-        test_splits=test_splits,
-        schemas=schemas,
-    )
 
 
 def normalize(query: str) -> str:
@@ -847,7 +543,8 @@ def serialize_schema(
             table=table_name.lower() if normalize_query else table_name,
             columns=column_sep.join(
                 map(
-                    lambda y: get_column_str(table_name=table_name, column_name=y[1]),
+                    lambda y: get_column_str(
+                        table_name=table_name, column_name=y[1]),
                     filter(
                         lambda y: y[0] == table_id,
                         zip(
@@ -863,7 +560,8 @@ def serialize_schema(
     if schema_serialization_randomized:
         random.shuffle(tables)
     if schema_serialization_with_db_id:
-        serialized_schema = db_id_str.format(db_id=db_id) + table_sep.join(tables)
+        serialized_schema = db_id_str.format(
+            db_id=db_id) + table_sep.join(tables)
     else:
         serialized_schema = table_sep.join(tables)
     return serialized_schema
@@ -934,12 +632,15 @@ def serialize_schema_natural_language(
                         question=question,
                         table_name=table_name,
                         column_name=y,
-                        db_path=(db_path + "/" + db_id + "/" + db_id + ".sqlite"),
+                        db_path=(db_path + "/" + db_id +
+                                 "/" + db_id + ".sqlite"),
                     )
                     if matches:
-                        column_value_pairs.append((column_str, value_sep.join(matches)))
+                        column_value_pairs.append(
+                            (column_str, value_sep.join(matches)))
 
-        table_description_columns_str = table_description(table_name_str, columns)
+        table_description_columns_str = table_description(
+            table_name_str, columns)
         descriptions.append(table_description_columns_str)
         table_description_primary_key_str = table_description_primary_key_template(
             table_name_str, ", ".join(primary_keys)
@@ -1021,13 +722,15 @@ if __name__ == "__main__":
         metavar="U",
         type=str,
         nargs="+",
-        default=["data/spider/train_spider.json", "data/spider/train_others.json"],
+        default=["data/train/train.json"],
     )
-    parser.add_argument("--output_file", type=str, default="sql_finetune_data.json")
+    parser.add_argument("--output_file", type=str,
+                        default="sql_finetune_data.json")
     args = parser.parse_args()
 
     data_filepaths = args.data_filepaths
-    raw_datasets = generate_data(data_filepaths, "data/spider/database")
+    raw_datasets = generate_data(
+        data_filepaths, "data/train/train_databases/train_databases")
     sql_finetune_data = []
     fields = ["instruction", "input", "output"]
     for raw_data in tqdm(raw_datasets):
